@@ -19,6 +19,7 @@
  */
 
 import { resolve } from 'path';
+import { existsSync } from 'fs';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
@@ -651,8 +652,10 @@ export function registerContainerTools(server: McpServer): void {
     },
     async ({ hostPath, containerName, containerPath }) => {
       try {
-        const { resolve: resolvePath } = await import('path');
-        const resolvedHost = resolvePath(hostPath);
+        const resolvedHost = resolve(hostPath);
+        if (!existsSync(resolvedHost)) {
+          return buildErrorResponse(`Host path not found: ${resolvedHost}`);
+        }
         const safeRoot = process.env['CONTAINER_MCP_VOLUME_ROOT'] ?? process.env['HOME'] ?? process.cwd();
         if (!resolvedHost.startsWith(safeRoot)) {
           return buildErrorResponse(
@@ -682,8 +685,7 @@ export function registerContainerTools(server: McpServer): void {
     },
     async ({ containerName, containerPath, hostPath }) => {
       try {
-        const { resolve: resolvePath } = await import('path');
-        const resolvedHost = resolvePath(hostPath);
+        const resolvedHost = resolve(hostPath);
         const safeRoot = process.env['CONTAINER_MCP_VOLUME_ROOT'] ?? process.env['HOME'] ?? process.cwd();
         if (!resolvedHost.startsWith(safeRoot)) {
           return buildErrorResponse(
@@ -736,6 +738,74 @@ export function registerContainerTools(server: McpServer): void {
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
         return buildErrorResponse(`Failed to wait for container "${name}"`, { details: message });
+      }
+    },
+  );
+
+  server.tool(
+    'rename_container',
+    'Rename an existing container',
+    {
+      container: z.string().describe('Container name or ID to rename'),
+      newName: z.string().describe('New name for the container'),
+    },
+    async ({ container, newName }) => {
+      try {
+        if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(newName)) {
+          return buildErrorResponse(
+            `Invalid new container name: "${newName}". Names must start with alphanumeric and contain only [a-zA-Z0-9_.-].`
+          );
+        }
+        const stdout = await runContainerCommandStrict(['rename', container, newName]);
+        return buildSuccessResponse({
+          message: `Container "${container}" renamed to "${newName}" successfully`,
+          output: stdout.trim(),
+        });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        return buildErrorResponse(`Failed to rename container "${container}"`, { details: message });
+      }
+    },
+  );
+
+  server.tool(
+    'pause_container',
+    'Pause all processes within one or more containers',
+    {
+      names: z.array(z.string()).min(1).describe('Container names or IDs to pause'),
+    },
+    async ({ names }) => {
+      try {
+        const stdout = await runContainerCommandStrict(['pause', ...names]);
+        return buildSuccessResponse({
+          message: `Paused ${names.length} container(s) successfully`,
+          paused: names,
+          output: stdout.trim(),
+        });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        return buildErrorResponse('Failed to pause container(s)', { details: message });
+      }
+    },
+  );
+
+  server.tool(
+    'unpause_container',
+    'Unpause all processes within one or more paused containers',
+    {
+      names: z.array(z.string()).min(1).describe('Container names or IDs to unpause'),
+    },
+    async ({ names }) => {
+      try {
+        const stdout = await runContainerCommandStrict(['unpause', ...names]);
+        return buildSuccessResponse({
+          message: `Unpaused ${names.length} container(s) successfully`,
+          unpaused: names,
+          output: stdout.trim(),
+        });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        return buildErrorResponse('Failed to unpause container(s)', { details: message });
       }
     },
   );

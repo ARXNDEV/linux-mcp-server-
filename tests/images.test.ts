@@ -18,12 +18,14 @@ vi.mock('../src/utils/cli.js', () => ({
 }));
 
 import { runContainerCommandStrict } from '../src/utils/cli.js';
+import { registerImageTools } from '../src/tools/images.js';
 import {
   isValidOciName,
   isValidPortMapping,
   isValidEnvVar,
   formatBytes,
   formatRelativeTime,
+  parseRelativeDuration,
   parseTableOutput,
   safeJsonParse,
   truncate,
@@ -91,6 +93,19 @@ describe('Image Tools', () => {
       const args = ['rmi', '--force', 'nginx:latest'];
       await runContainerCommandStrict(args);
       expect(mockedRunStrict).toHaveBeenCalledWith(['rmi', '--force', 'nginx:latest']);
+    });
+  });
+
+  describe('tag_image', () => {
+    it('should reject invalid OCI image names', async () => {
+      const mockServer = { tool: vi.fn() };
+      registerImageTools(mockServer as any);
+      const toolCall = mockServer.tool.mock.calls.find((c: any) => c[0] === 'tag_image');
+      const handler = toolCall[3];
+
+      const res = await handler({ source: '-invalid:abc', target: 'target:latest' });
+      expect(res.isError).toBe(true);
+      expect(res.content[0].text).toContain('Invalid source image reference');
     });
   });
 
@@ -168,11 +183,24 @@ describe('Parser Utilities', () => {
 
   describe('formatBytes', () => {
     it('should format bytes correctly', () => {
+      expect(formatBytes(500)).toBe('500.0 B');
       expect(formatBytes(0)).toBe('0 B');
       expect(formatBytes(1024)).toBe('1.0 KB');
       expect(formatBytes(1048576)).toBe('1.0 MB');
       expect(formatBytes(1073741824)).toBe('1.0 GB');
       expect(formatBytes(268435456)).toBe('256.0 MB');
+    });
+  });
+
+  describe('parseRelativeDuration', () => {
+    it('parseRelativeDuration("30m") returns a valid ISO 8601 string', () => {
+      const res = parseRelativeDuration('30m');
+      expect(res).not.toBeNull();
+      expect(new Date(res!).toISOString()).toBe(res);
+    });
+
+    it('parseRelativeDuration("abc") returns null', () => {
+      expect(parseRelativeDuration('abc')).toBeNull();
     });
   });
 

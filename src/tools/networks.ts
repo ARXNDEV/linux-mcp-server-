@@ -30,6 +30,57 @@ export function registerNetworkTools(server: McpServer): void {
    * containing network names, IDs, drivers, scopes, and subnet information.
    */
   server.tool(
+    'create_network',
+    'Create a new container network',
+    {
+      name: z.string().describe('Network name'),
+      driver: z.string().optional().describe('Driver to manage the network (e.g. "bridge", "overlay")'),
+      options: z.record(z.string()).optional().describe('Network-specific options'),
+    },
+    async ({ name, driver, options }) => {
+      try {
+        const args = ['network', 'create'];
+        if (driver) args.push('--driver', driver);
+        if (options) {
+          for (const [key, val] of Object.entries(options)) {
+            args.push('--opt', `${key}=${val}`);
+          }
+        }
+        args.push(name);
+        const stdout = await runContainerCommandStrict(args);
+        return buildSuccessResponse({
+          message: `Network "${name}" created successfully`,
+          output: stdout.trim(),
+        });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        return buildErrorResponse(`Failed to create network "${name}"`, { details: message });
+      }
+    },
+  );
+
+  server.tool(
+    'delete_network',
+    'Remove one or more container networks',
+    {
+      networks: z.array(z.string()).min(1).describe('Network names or IDs to remove'),
+    },
+    async ({ networks }) => {
+      try {
+        const stdout = await runContainerCommandStrict(['network', 'rm', ...networks]);
+        return buildSuccessResponse({
+          message: `Removed ${networks.length} network(s) successfully`,
+          deleted: networks,
+          output: stdout.trim(),
+        });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        return buildErrorResponse('Failed to remove network(s)', { details: message });
+      }
+    },
+  );
+
+  server.tool(
     'list_networks',
     'List all container networks. Returns network names, IDs, drivers, scopes, and subnet details.',
     {

@@ -136,6 +136,7 @@ export function registerLogTools(server: McpServer): void {
           args.push('--tail', String(tail));
         }
 
+        let finalSince: string | null = null;
         if (since) {
           const parsedSince = parseRelativeDuration(since) ?? since;
           if (!/^\d{4}-\d{2}-\d{2}(T[\d:.]+Z?)?$/.test(parsedSince)) {
@@ -143,6 +144,7 @@ export function registerLogTools(server: McpServer): void {
               `Invalid "since" value: "${since}". Use ISO 8601 format (e.g. 2024-01-01T00:00:00) or a relative duration (e.g. "5m", "1h").`
             );
           }
+          finalSince = parsedSince;
           args.push('--since', parsedSince);
         }
 
@@ -173,7 +175,7 @@ export function registerLogTools(server: McpServer): void {
             container: name,
             lineCount,
             tail,
-            since: since ?? null,
+            since: finalSince,
             follow,
             followIgnored: true,
             followNote: 'follow mode is not supported in MCP context — returning static snapshot.',
@@ -185,7 +187,7 @@ export function registerLogTools(server: McpServer): void {
           container: name,
           lineCount,
           tail,
-          since: since ?? null,
+          since: finalSince,
           follow,
           logs: logOutput,
         });

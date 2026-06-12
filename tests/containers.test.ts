@@ -17,9 +17,11 @@ vi.mock('../src/utils/cli.js', () => ({
   })),
 }));
 
-import { runContainerCommandStrict } from '../src/utils/cli.js';
+import { runContainerCommandStrict, runContainerCommand } from '../src/utils/cli.js';
+import { registerContainerTools } from '../src/tools/containers.js';
 
 const mockedRunStrict = vi.mocked(runContainerCommandStrict);
+const mockedRun = vi.mocked(runContainerCommand);
 
 describe('Container Tools', () => {
   beforeEach(() => {
@@ -138,6 +140,34 @@ describe('Container Tools', () => {
       const args = ['exec', 'web', 'echo', 'hello', 'world'];
       const result = await runContainerCommandStrict(args);
       expect(result).toBe('hello world');
+    });
+  });
+
+  describe('copy_to_container', () => {
+    it('should return error for non-existent host path', async () => {
+      const mockServer = { tool: vi.fn() };
+      registerContainerTools(mockServer as any);
+      const toolCall = mockServer.tool.mock.calls.find((c: any) => c[0] === 'copy_to_container');
+      const handler = toolCall[3];
+
+      const res = await handler({ hostPath: '/does/not/exist/12345', containerName: 'test', containerPath: '/app' });
+      expect(res.isError).toBe(true);
+      expect(res.content[0].text).toContain('Host path not found');
+    });
+  });
+
+  describe('wait_container', () => {
+    it('should parse exit code correctly', async () => {
+      const mockServer = { tool: vi.fn() };
+      registerContainerTools(mockServer as any);
+      const toolCall = mockServer.tool.mock.calls.find((c: any) => c[0] === 'wait_container');
+      const handler = toolCall[3];
+
+      mockedRun.mockResolvedValue({ stdout: '137\n', stderr: '', exitCode: 0 });
+
+      const res = await handler({ name: 'test', timeout: 30 });
+      const parsed = JSON.parse(res.content[0].text);
+      expect(parsed.exitCode).toBe(137);
     });
   });
 

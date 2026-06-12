@@ -45,7 +45,7 @@ function createServer(): McpServer {
   registerSystemTools(server);
   registerDiagnosticsTools(server);
 
-  logger.info(`All 27 tools registered successfully`);
+  logger.info(`All 34 tools registered successfully`);
 
   return server;
 }

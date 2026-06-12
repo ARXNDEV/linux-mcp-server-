@@ -408,4 +408,27 @@ export function registerImageTools(server: McpServer): void {
     },
     (params) => tagImage(params),
   );
+
+  server.tool(
+    'push_image',
+    'Push an image or a repository to a registry',
+    {
+      image: z.string().describe('Image name or reference to push (e.g. "docker.io/library/myapp:latest")'),
+    },
+    async ({ image }) => {
+      try {
+        if (!isValidOciName(image)) {
+          return buildErrorResponse(`Invalid image reference: "${image}"`);
+        }
+        const stdout = await runContainerCommandStrict(['image', 'push', image], { timeout: 300_000 });
+        return buildSuccessResponse({
+          message: `Successfully pushed image "${image}"`,
+          output: stdout.trim(),
+        });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        return buildErrorResponse(`Failed to push image "${image}"`, { details: message });
+      }
+    },
+  );
 }

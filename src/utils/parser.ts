@@ -150,7 +150,7 @@ export function parseRelativeDuration(duration: string): string | null {
   if (!match) return null;
   const val = parseInt(match[1]!, 10);
   const unit = match[2]!;
-  let multiplier = 1;
+  let multiplier = 0;
   if (unit === 's') multiplier = 1000;
   if (unit === 'm') multiplier = 60000;
   if (unit === 'h') multiplier = 3600000;
