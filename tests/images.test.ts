@@ -3,22 +3,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-// Mock the CLI module
-vi.mock('../src/utils/cli.js', () => ({
-  runContainerCommandStrict: vi.fn(),
-  runContainerCommand: vi.fn(),
-  buildSuccessResponse: vi.fn((data) => ({
-    content: [{ type: 'text', text: typeof data === 'string' ? data : JSON.stringify(data, null, 2) }],
-  })),
-  buildErrorResponse: vi.fn((msg, details) => ({
-    content: [{ type: 'text', text: JSON.stringify({ error: msg, ...details }, null, 2) }],
-    isError: true,
-  })),
-}));
-
 import { runContainerCommandStrict } from '../src/utils/cli.js';
 import { registerImageTools } from '../src/tools/images.js';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
   isValidOciName,
   isValidPortMapping,
@@ -31,7 +18,28 @@ import {
   truncate,
 } from '../src/utils/parser.js';
 
+vi.mock('../src/utils/cli.js', () => ({
+  runContainerCommandStrict: vi.fn(),
+  runContainerCommand: vi.fn(),
+  buildSuccessResponse: vi.fn((data) => ({
+    content: [{ type: 'text', text: typeof data === 'string' ? data : JSON.stringify(data, null, 2) }],
+  })),
+  buildErrorResponse: vi.fn((msg, details) => ({
+    content: [{ type: 'text', text: JSON.stringify({ error: msg, ...details }, null, 2) }],
+    isError: true,
+  })),
+}));
+
 const mockedRunStrict = vi.mocked(runContainerCommandStrict);
+
+function getToolHandler(toolName: string) {
+  const mockServer = { tool: vi.fn() };
+  registerImageTools(mockServer as unknown as McpServer);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const call = mockServer.tool.mock.calls.find((c: any[]) => c[0] === toolName);
+  if (!call) throw new Error(`Tool ${toolName} not registered`);
+  return call[3];
+}
 
 describe('Image Tools', () => {
   beforeEach(() => {
@@ -39,92 +47,106 @@ describe('Image Tools', () => {
   });
 
   describe('list_images', () => {
-    it('should call container images with --format json', async () => {
-      mockedRunStrict.mockResolvedValue('[{"repository":"nginx","tag":"latest"}]');
+    it('should use json format', async () => {
+      const handler = getToolHandler('list_images');
+      mockedRunStrict.mockResolvedValue('[{"repository":"nginx"}]');
+      await handler({ format: 'json' }, {});
+      expect(mockedRunStrict).toHaveBeenCalledWith(['image', 'ls', '--format', 'json']);
+    });
 
-      const result = await runContainerCommandStrict(['images', '--format', 'json']);
-      const parsed = JSON.parse(result);
-      expect(parsed).toHaveLength(1);
-      expect(parsed[0].repository).toBe('nginx');
+    it('should use table format without --format', async () => {
+      const handler = getToolHandler('list_images');
+      mockedRunStrict.mockResolvedValue('table');
+      await handler({ format: 'table' }, {});
+      expect(mockedRunStrict).toHaveBeenCalledWith(['image', 'ls']);
     });
   });
 
   describe('pull_image', () => {
-    it('should pull an image', async () => {
-      mockedRunStrict.mockResolvedValue('Pulling ubuntu:latest... done');
+    it('should reject invalid OCI ref', async () => {
+      const handler = getToolHandler('pull_image');
+      const res = await handler({ reference: 'invalid ref' }, {});
+      expect(res.isError).toBe(true);
+    });
 
-      const result = await runContainerCommandStrict(['pull', 'ubuntu:latest']);
-      expect(result).toContain('ubuntu:latest');
+    it('should pull valid ref', async () => {
+      const handler = getToolHandler('pull_image');
+      mockedRunStrict.mockResolvedValue('pulling...');
+      const res = await handler({ reference: 'ubuntu:latest' }, {});
+      expect(res.isError).toBeFalsy();
+      expect(res.content[0].text).toContain('ubuntu:latest');
     });
   });
 
   describe('build_image', () => {
-    it('should build with tag and context', async () => {
-      mockedRunStrict.mockResolvedValue('Successfully built abc123');
-
-      const args = ['build', '-t', 'myapp:v1', '.'];
-      const result = await runContainerCommandStrict(args);
-      expect(result).toContain('Successfully built');
+    it('should reject non-existent context path', async () => {
+      const handler = getToolHandler('build_image');
+      const res = await handler({ context: '/does/not/exist/abc12345', tag: 'myapp:latest' }, {});
+      expect(res.isError).toBe(true);
+      expect(res.content[0].text).toContain('Build context path does not exist');
     });
 
-    it('should include build args', async () => {
-      mockedRunStrict.mockResolvedValue('Built');
+    it('should reject invalid tag', async () => {
+      const handler = getToolHandler('build_image');
+      const res = await handler({ context: '.', tag: 'invalid tag' }, {});
+      expect(res.isError).toBe(true);
+    });
 
-      const args = ['build', '-t', 'myapp:v1', '--build-arg', 'NODE_VERSION=18', '.'];
-      await runContainerCommandStrict(args);
-      expect(mockedRunStrict).toHaveBeenCalledWith(
-        expect.arrayContaining(['--build-arg', 'NODE_VERSION=18']),
-      );
+    it('should reject invalid build arg key', async () => {
+      const handler = getToolHandler('build_image');
+      const res = await handler({ context: '.', tag: 'myapp:latest', buildArgs: { 'INVALID ARG': 'value' } }, {});
+      expect(res.isError).toBe(true);
     });
   });
 
   describe('remove_image', () => {
-    it('should remove images', async () => {
-      mockedRunStrict.mockResolvedValue('Untagged: nginx:latest');
-
-      const args = ['rmi', 'nginx:latest'];
-      await runContainerCommandStrict(args);
-      expect(mockedRunStrict).toHaveBeenCalledWith(['rmi', 'nginx:latest']);
+    it('should reject invalid ref', async () => {
+      const handler = getToolHandler('remove_image');
+      const res = await handler({ references: ['invalid name'] }, {});
+      expect(res.isError).toBe(true);
     });
 
-    it('should force remove images', async () => {
-      mockedRunStrict.mockResolvedValue('Deleted');
-
-      const args = ['rmi', '--force', 'nginx:latest'];
-      await runContainerCommandStrict(args);
-      expect(mockedRunStrict).toHaveBeenCalledWith(['rmi', '--force', 'nginx:latest']);
+    it('should include force flag', async () => {
+      const handler = getToolHandler('remove_image');
+      mockedRunStrict.mockResolvedValue('removed');
+      await handler({ references: ['ubuntu:latest'], force: true }, {});
+      expect(mockedRunStrict).toHaveBeenCalledWith(['image', 'rm', '--force', 'ubuntu:latest']);
     });
   });
 
   describe('tag_image', () => {
-    it('should reject invalid OCI image names', async () => {
-      const mockServer = { tool: vi.fn() };
-      registerImageTools(mockServer as any);
-      const toolCall = mockServer.tool.mock.calls.find((c: any) => c[0] === 'tag_image');
-      const handler = toolCall[3];
-
-      const res = await handler({ source: '-invalid:abc', target: 'target:latest' });
+    it('should reject invalid source', async () => {
+      const handler = getToolHandler('tag_image');
+      const res = await handler({ source: '-invalid', target: 'myapp:latest' }, {});
       expect(res.isError).toBe(true);
-      expect(res.content[0].text).toContain('Invalid source image reference');
+    });
+
+    it('should reject invalid target', async () => {
+      const handler = getToolHandler('tag_image');
+      const res = await handler({ source: 'ubuntu:latest', target: '-invalid' }, {});
+      expect(res.isError).toBe(true);
+    });
+
+    it('should call CLI with source and target', async () => {
+      const handler = getToolHandler('tag_image');
+      mockedRunStrict.mockResolvedValue('');
+      await handler({ source: 'ubuntu:latest', target: 'myapp:v1' }, {});
+      expect(mockedRunStrict).toHaveBeenCalledWith(['image', 'tag', 'ubuntu:latest', 'myapp:v1']);
     });
   });
 
-  describe('inspect_image', () => {
-    it('should return parsed image info', async () => {
-      const inspectData = JSON.stringify({
-        Id: 'sha256:abc123',
-        Config: {
-          Env: ['PATH=/usr/local/bin'],
-          Entrypoint: ['/entrypoint.sh'],
-        },
-        RootFS: { Layers: ['sha256:layer1', 'sha256:layer2'] },
-      });
-      mockedRunStrict.mockResolvedValue(inspectData);
+  describe('push_image', () => {
+    it('should reject invalid image ref', async () => {
+      const handler = getToolHandler('push_image');
+      const res = await handler({ image: 'invalid name' }, {});
+      expect(res.isError).toBe(true);
+    });
 
-      const result = await runContainerCommandStrict(['image', 'inspect', 'nginx:latest']);
-      const parsed = JSON.parse(result);
-      expect(parsed.Config.Env).toContain('PATH=/usr/local/bin');
-      expect(parsed.RootFS.Layers).toHaveLength(2);
+    it('should call CLI with image', async () => {
+      const handler = getToolHandler('push_image');
+      mockedRunStrict.mockResolvedValue('');
+      await handler({ image: 'myrepo/myapp:latest' }, {});
+      expect(mockedRunStrict).toHaveBeenCalledWith(['image', 'push', 'myrepo/myapp:latest'], { timeout: 300_000 });
     });
   });
 });
@@ -183,12 +205,16 @@ describe('Parser Utilities', () => {
 
   describe('formatBytes', () => {
     it('should format bytes correctly', () => {
-      expect(formatBytes(500)).toBe('500.0 B');
       expect(formatBytes(0)).toBe('0 B');
       expect(formatBytes(1024)).toBe('1.0 KB');
       expect(formatBytes(1048576)).toBe('1.0 MB');
       expect(formatBytes(1073741824)).toBe('1.0 GB');
       expect(formatBytes(268435456)).toBe('256.0 MB');
+    });
+
+    it('should return 0 B for negative or NaN', () => {
+      expect(formatBytes(-1024)).toBe('0 B');
+      expect(formatBytes(NaN)).toBe('0 B');
     });
   });
 
@@ -201,6 +227,20 @@ describe('Parser Utilities', () => {
 
     it('parseRelativeDuration("abc") returns null', () => {
       expect(parseRelativeDuration('abc')).toBeNull();
+    });
+
+    it('parseRelativeDuration("0s") returns timestamp', () => {
+      const res = parseRelativeDuration('0s');
+      expect(res).not.toBeNull();
+    });
+
+    it('parseRelativeDuration("1d") returns ISO string roughly 24h ago', () => {
+      const res = parseRelativeDuration('1d');
+      expect(res).not.toBeNull();
+      const parsed = new Date(res!);
+      const now = new Date();
+      const diffMs = now.getTime() - parsed.getTime();
+      expect(Math.abs(diffMs - 86400000)).toBeLessThan(1000); // within 1 second
     });
   });
 

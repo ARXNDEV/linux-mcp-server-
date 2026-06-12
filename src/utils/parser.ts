@@ -111,7 +111,8 @@ export function isValidEnvVar(envVar: string): boolean {
  * @returns Formatted string
  */
 export function formatBytes(bytes: number, decimals = 1): string {
-  if (!+bytes) return '0 B';
+  if (!+bytes || bytes < 0) return '0 B';
+
   const k = 1024;
   const dm = decimals < 0 ? 0 : decimals;
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];

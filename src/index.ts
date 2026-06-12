@@ -36,6 +36,15 @@ function createServer(): McpServer {
     version,
   });
 
+  let toolCount = 0;
+  const originalTool = server.tool.bind(server);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (server as any).tool = (...args: any[]) => {
+    toolCount++;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return originalTool(...(args as any));
+  };
+
   // Register all tool categories
   registerContainerTools(server);
   registerImageTools(server);
@@ -45,7 +54,7 @@ function createServer(): McpServer {
   registerSystemTools(server);
   registerDiagnosticsTools(server);
 
-  logger.info(`All 34 tools registered successfully`);
+  logger.info(`All ${toolCount} tools registered successfully`);
 
   return server;
 }

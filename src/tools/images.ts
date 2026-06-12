@@ -1,12 +1,16 @@
 /**
- * Image management tools for the Apple `container` CLI MCP server.
+ * Image management tools for the container MCP server.
+ * Provides tools to list, pull, build, remove, tag, push, and inspect
+ * container images via the Apple `container` CLI.
  *
- * Provides five MCP tools for working with OCI images:
- * - **list_images** — Enumerate all locally cached images
- * - **pull_image** — Pull an image from a remote registry
- * - **build_image** — Build an image from a Dockerfile and build context
- * - **remove_image** — Delete one or more local images
- * - **inspect_image** — Retrieve detailed metadata for an image
+ * Tools registered:
+ * - `list_images`   — List all local container images
+ * - `pull_image`    — Pull an image from a registry
+ * - `build_image`   — Build a new image from a Dockerfile
+ * - `remove_image`  — Remove one or more images
+ * - `inspect_image` — Get detailed metadata about an image
+ * - `tag_image`     — Create a new tag for an existing local image
+ * - `push_image`    — Push an image or a repository to a registry
  *
  * @module tools/images
  */

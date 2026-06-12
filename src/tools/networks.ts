@@ -1,6 +1,13 @@
 /**
  * Network management tools for the container MCP server.
- * Provides tools to list container networks via the Apple `container` CLI.
+ * Provides tools to create, delete, and list container networks
+ * via the Apple `container` CLI.
+ *
+ * Tools registered:
+ * - `create_network` — Create a new container network
+ * - `delete_network` — Remove one or more container networks
+ * - `list_networks`  — List all container networks
+ *
  * @module tools/networks
  */
 
@@ -39,6 +46,11 @@ export function registerNetworkTools(server: McpServer): void {
     },
     async ({ name, driver, options }) => {
       try {
+        if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(name)) {
+          return buildErrorResponse(
+            `Invalid network name: "${name}". Names must start with alphanumeric and contain only [a-zA-Z0-9_.-].`
+          );
+        }
         const args = ['network', 'create'];
         if (driver) args.push('--driver', driver);
         if (options) {

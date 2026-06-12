@@ -714,9 +714,9 @@ export function registerContainerTools(server: McpServer): void {
         .number()
         .int()
         .min(1)
-        .optional()
+        .max(3600)
         .default(300)
-        .describe('Maximum seconds to wait before giving up (default: 300)'),
+        .describe('Maximum seconds to wait (1–3600, default: 300)'),
     },
     async ({ name, timeout }) => {
       try {
@@ -776,6 +776,13 @@ export function registerContainerTools(server: McpServer): void {
     },
     async ({ names }) => {
       try {
+        for (const name of names) {
+          if (!name.trim() || /[\s;|&`$]/.test(name)) {
+            return buildErrorResponse(
+              `Invalid name: "${name}". Names must not be empty or contain shell metacharacters.`
+            );
+          }
+        }
         const stdout = await runContainerCommandStrict(['pause', ...names]);
         return buildSuccessResponse({
           message: `Paused ${names.length} container(s) successfully`,
@@ -797,6 +804,13 @@ export function registerContainerTools(server: McpServer): void {
     },
     async ({ names }) => {
       try {
+        for (const name of names) {
+          if (!name.trim() || /[\s;|&`$]/.test(name)) {
+            return buildErrorResponse(
+              `Invalid name: "${name}". Names must not be empty or contain shell metacharacters.`
+            );
+          }
+        }
         const stdout = await runContainerCommandStrict(['unpause', ...names]);
         return buildSuccessResponse({
           message: `Unpaused ${names.length} container(s) successfully`,
