@@ -77,7 +77,7 @@ Add to `.cursor/mcp.json` in your project:
 
 ## Tool Reference
 
-### 🐳 Container Lifecycle (7 tools)
+### 🐳 Container Lifecycle (8 tools)
 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
@@ -88,6 +88,7 @@ Add to `.cursor/mcp.json` in your project:
 | `delete_container` | Remove containers | `names`, `force` |
 | `inspect_container` | Get detailed container info | `name` |
 | `exec_in_container` | Execute command in container | `name`, `command`, `interactive` |
+| `container_commit` | Commit container to new image | `container`, `image`, `message` |
 
 ### 📦 Image Management (5 tools)
 
@@ -215,7 +216,7 @@ npm run dev
 ```
 container-mcp
 ├── MCP Server (stdio transport)
-│   ├── Container Tools (7) ── container CLI
+│   ├── Container Tools (8) ── container CLI
 │   ├── Image Tools (5) ────── container CLI
 │   ├── Log Tools (3) ──────── container CLI
 │   ├── Volume Tools (3) ───── container CLI

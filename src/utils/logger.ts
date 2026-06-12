@@ -16,7 +16,12 @@ const LOG_LEVELS: Record<LogLevel, number> = {
 };
 
 /** Current minimum log level (configurable via CONTAINER_MCP_LOG_LEVEL env var). */
-const currentLevel: LogLevel = (process.env['CONTAINER_MCP_LOG_LEVEL'] as LogLevel) || 'info';
+const VALID_LEVELS: LogLevel[] = ['debug', 'info', 'warn', 'error'];
+const rawLevel = process.env['CONTAINER_MCP_LOG_LEVEL'];
+const currentLevel: LogLevel =
+  rawLevel && (VALID_LEVELS as string[]).includes(rawLevel)
+    ? (rawLevel as LogLevel)
+    : 'info';
 
 /**
  * Write a structured log entry to stderr.
@@ -24,16 +29,27 @@ const currentLevel: LogLevel = (process.env['CONTAINER_MCP_LOG_LEVEL'] as LogLev
  * @param message - The log message
  * @param data - Optional structured data to include
  */
+function sanitize(val: unknown): unknown {
+  // eslint-disable-next-line no-control-regex
+  if (typeof val === 'string') return val.replace(/[\r\n\t]/g, ' ').replace(/[\x00-\x1f]/g, '');
+  if (val && typeof val === 'object' && !Array.isArray(val)) {
+    return Object.fromEntries(
+      Object.entries(val as Record<string, unknown>).map(([k, v]) => [k, sanitize(v)])
+    );
+  }
+  return val;
+}
+
 function log(level: LogLevel, message: string, data?: Record<string, unknown>): void {
-  if (LOG_LEVELS[level] < LOG_LEVELS[currentLevel]) {
+  if ((LOG_LEVELS[level] ?? 0) < (LOG_LEVELS[currentLevel] ?? 1)) {
     return;
   }
 
   const entry = {
     timestamp: new Date().toISOString(),
     level,
-    message,
-    ...data,
+    message: sanitize(message) as string,
+    ...(data ? (sanitize(data) as Record<string, unknown>) : {}),
   };
 
   process.stderr.write(JSON.stringify(entry) + '\n');

@@ -96,7 +96,7 @@ const LOG_DIAGNOSTIC_PATTERNS: DiagnosticPattern[] = [
     severity: 'high',
   },
   {
-    logPatterns: ['undefined', 'not set', 'missing environment', 'env var', 'required variable'],
+    logPatterns: ['missing environment variable', 'env var not set', 'required variable', 'environment variable is not defined'],
     cause: 'Missing or undefined environment variable — the application is referencing a configuration value that was not provided.',
     fix: 'Pass the required environment variables with -e KEY=VALUE or via an --env-file. Check the image documentation for required variables.',
     severity: 'medium',
@@ -439,8 +439,13 @@ export function registerAiTools(server: McpServer): void {
           { timeout: 15_000 },
         );
         // Logs may come on stderr for some runtimes; combine both streams
-        const rawLogs =
-          (logsResult.stdout || '') + '\n' + (logsResult.stderr || '');
+        let rawLogs = (logsResult.stdout || '') + '\n' + (logsResult.stderr || '');
+        let logWarning = '';
+        if (logsResult.exitCode !== 0) {
+          logWarning = `⚠️ Warning: Failed to fetch logs (exit code ${logsResult.exitCode}). ` +
+            `Log-based analysis may be incomplete.\n`;
+          rawLogs = logsResult.stderr || '';
+        }
 
         // ── Step 2: Fetch inspect data ────────────────────────────
         let inspectRaw: string;
@@ -485,7 +490,7 @@ export function registerAiTools(server: McpServer): void {
 
         // ── Step 4: Build result ──────────────────────────────────
         const status = inspectData ? extractStatus(inspectData) : 'unknown';
-        const logExcerpt = lastNLines(rawLogs, 20);
+
         const inspectSummary = inspectData
           ? buildInspectSummary(inspectData)
           : 'Inspect data unavailable.';
@@ -504,6 +509,7 @@ export function registerAiTools(server: McpServer): void {
                 'Container appears healthy. If problems persist, check application-level logs or increase the log tail count.',
               ];
 
+        const logExcerpt = logWarning + lastNLines(rawLogs, 20);
         const diagnosis: DiagnosisResult = {
           containerName: name,
           status,

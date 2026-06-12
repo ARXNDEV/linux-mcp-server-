@@ -1,7 +1,7 @@
 /**
  * @fileoverview Container lifecycle management tools for the Apple Container MCP server.
  *
- * Registers 7 MCP tools that wrap the `container` CLI to provide full
+ * Registers 8 MCP tools that wrap the `container` CLI to provide full
  * container lifecycle management:
  *   1. list_containers   — enumerate containers (running or all)
  *   2. run_container     — create and start a container from an OCI image
@@ -10,10 +10,12 @@
  *   5. delete_container  — remove one or more containers
  *   6. inspect_container — retrieve detailed metadata for a single container
  *   7. exec_in_container — execute a command inside a running container
+ *   8. container_commit   — commit a container's current state to a new image
  *
  * @module tools/containers
  */
 
+import { resolve } from 'path';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
@@ -31,6 +33,65 @@ import {
   safeJsonParse,
   parseTableOutput,
 } from '../utils/parser.js';
+
+function parseShellArgs(input: string): string[] {
+  const args: string[] = [];
+  let current = '';
+  let inSingle = false;
+  let inDouble = false;
+
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i]!;
+
+    if (ch === "'" && !inDouble) {
+      inSingle = !inSingle;
+      // Preserve empty string args — push empty token marker
+      if (!inSingle && current === '' && args.length >= 0) {
+        current = '\x00EMPTY\x00';
+      }
+    } else if (ch === '"' && !inSingle) {
+      inDouble = !inDouble;
+      if (!inDouble && current === '') {
+        current = '\x00EMPTY\x00';
+      }
+    } else if ((ch === ' ' || ch === '\t') && !inSingle && !inDouble) {
+      if (current) {
+        args.push(current === '\x00EMPTY\x00' ? '' : current);
+        current = '';
+      }
+    } else if (ch === '\\' && i + 1 < input.length) {
+      // inside double quotes: only \" \\ \$ \` are special
+      if (inDouble) {
+        const next = input[i + 1]!;
+        if (next === '"' || next === '\\' || next === '$' || next === '`') {
+          current += next;
+          i++;
+        } else {
+          current += ch; // keep the backslash literally
+        }
+      } else if (!inSingle) {
+        // outside any quotes: backslash escapes the next character
+        current += input[i + 1]!;
+        i++;
+      } else {
+        // inside single quotes: backslash is literal
+        current += ch;
+      }
+    } else {
+      current += ch;
+    }
+  }
+
+  if (inSingle || inDouble) {
+    throw new Error(`Unclosed quote in command string: ${input}`);
+  }
+
+  if (current) {
+    args.push(current === '\x00EMPTY\x00' ? '' : current);
+  }
+
+  return args;
+}
 
 /**
  * Register all container-lifecycle tools on the given MCP server instance.
@@ -133,7 +194,7 @@ export function registerContainerTools(server: McpServer): void {
         .boolean()
         .optional()
         .default(true)
-        .describe('Run in background (detached mode)'),
+        .describe('Run in background (detached mode). WARNING: setting false runs the container in the foreground and will time out after 30 seconds — only use for short-lived commands.'),
       command: z
         .string()
         .optional()
@@ -150,12 +211,42 @@ export function registerContainerTools(server: McpServer): void {
           );
         }
 
+        if (name && !/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(name)) {
+          return buildErrorResponse(
+            `Invalid container name: "${name}". Names must start with alphanumeric and contain only [a-zA-Z0-9_.-].`
+          );
+        }
+
         if (ports) {
           for (const mapping of ports) {
             if (!isValidPortMapping(mapping)) {
               return buildErrorResponse(
                 `Invalid port mapping: "${mapping}". ` +
                   'Expected format is host_port:container_port (e.g. "8080:80").',
+              );
+            }
+          }
+        }
+
+        if (volumes) {
+          for (const mount of volumes) {
+            if (!/^[^:]+:[^:]+$/.test(mount)) {
+              return buildErrorResponse(
+                `Invalid volume mount: "${mount}". Expected format is host_path:container_path (e.g. "/data:/app/data").`
+              );
+            }
+            const [hostPath] = mount.split(':');
+            const resolvedHost = resolve(hostPath!);
+            if (resolvedHost !== hostPath!.replace(/\/+$/, '') && hostPath!.includes('..')) {
+              return buildErrorResponse(
+                `Invalid volume mount: "${mount}". Path traversal (..) is not allowed.`
+              );
+            }
+            // Stronger check: ensure resolved host path doesn't escape a safe root
+            const safeRoot = process.env['CONTAINER_MCP_VOLUME_ROOT'] ?? '/';
+            if (!resolvedHost.startsWith(safeRoot)) {
+              return buildErrorResponse(
+                `Volume host path "${resolvedHost}" is outside the allowed root ("${safeRoot}").`
               );
             }
           }
@@ -205,10 +296,15 @@ export function registerContainerTools(server: McpServer): void {
         // Image must come after all flags.
         args.push(image);
 
-        // Optional command — split by whitespace so users can pass
-        // multi-word commands as a single string (e.g. "sh -c 'echo hi'").
+        // Optional command — parse using shell rules to respect quotes
         if (command) {
-          args.push(...command.split(/\s+/).filter(Boolean));
+          try {
+            args.push(...parseShellArgs(command));
+          } catch (e) {
+            return buildErrorResponse(
+              `Invalid command string: ${e instanceof Error ? e.message : String(e)}`
+            );
+          }
         }
 
         // -- Execute ----------------------------------------------------------
@@ -248,11 +344,18 @@ export function registerContainerTools(server: McpServer): void {
         .describe('Container names or IDs to stop'),
       timeout: z
         .number()
+        .int()
+        .min(0)
         .optional()
-        .describe('Seconds to wait before forcefully killing the container'),
+        .describe('Seconds to wait before forcefully killing the container (must be a non-negative integer)'),
     },
     async ({ names, timeout }) => {
       try {
+        for (const name of names) {
+          if (!name.trim() || /[\s;|&`$]/.test(name)) {
+            return buildErrorResponse(`Invalid name: "${name}". Names must not be empty or contain shell metacharacters.`);
+          }
+        }
         const args: string[] = ['stop'];
 
         if (timeout !== undefined) {
@@ -293,6 +396,11 @@ export function registerContainerTools(server: McpServer): void {
     },
     async ({ names }) => {
       try {
+        for (const name of names) {
+          if (!name.trim() || /[\s;|&`$]/.test(name)) {
+            return buildErrorResponse(`Invalid name: "${name}". Names must not be empty or contain shell metacharacters.`);
+          }
+        }
         const args: string[] = ['start', ...names];
 
         const stdout = await runContainerCommandStrict(args);
@@ -334,6 +442,11 @@ export function registerContainerTools(server: McpServer): void {
     },
     async ({ names, force }) => {
       try {
+        for (const name of names) {
+          if (!name.trim() || /[\s;|&`$]/.test(name)) {
+            return buildErrorResponse(`Invalid name: "${name}". Names must not be empty or contain shell metacharacters.`);
+          }
+        }
         const args: string[] = ['rm'];
 
         if (force) {
@@ -379,9 +492,13 @@ export function registerContainerTools(server: McpServer): void {
         let stdout: string;
         try {
           stdout = await runContainerCommandStrict(args);
-        } catch {
-          // Some versions of the CLI may not support --format on inspect.
-          // Fall back to the plain invocation.
+        } catch (firstErr) {
+          const msg = firstErr instanceof Error ? firstErr.message : String(firstErr);
+          // Only retry if the error looks like an unsupported flag, not a missing container
+          if (msg.toLowerCase().includes('not found') || msg.toLowerCase().includes('no such')) {
+            throw firstErr;
+          }
+          // Fall back to plain invocation (CLI may not support --format on inspect)
           stdout = await runContainerCommandStrict(['inspect', name]);
         }
 
@@ -416,12 +533,12 @@ export function registerContainerTools(server: McpServer): void {
     'Execute a command inside a running container',
     {
       name: z.string().describe('Container name or ID'),
-      command: z.string().describe('Command to execute inside the container'),
+      command: z.string().min(1).describe('Command to execute inside the container'),
       interactive: z
         .boolean()
         .optional()
         .default(false)
-        .describe('Run in interactive mode'),
+        .describe('Attach stdin (-i flag). Note: no TTY is allocated in MCP context — commands requiring a terminal (bash, python REPL) may behave unexpectedly.'),
     },
     async ({ name, command, interactive }) => {
       try {
@@ -433,8 +550,15 @@ export function registerContainerTools(server: McpServer): void {
 
         args.push(name);
 
-        // Split the command string into individual tokens.
-        const commandParts = command.split(/\s+/).filter(Boolean);
+        // Parse command string using shell rules
+        let commandParts: string[];
+        try {
+          commandParts = parseShellArgs(command);
+        } catch (e) {
+          return buildErrorResponse(
+            `Invalid command string: ${e instanceof Error ? e.message : String(e)}`
+          );
+        }
         if (commandParts.length === 0) {
           return buildErrorResponse('Command must not be empty');
         }
@@ -467,6 +591,49 @@ export function registerContainerTools(server: McpServer): void {
           `Failed to execute command in container "${name}"`,
           { details: message },
         );
+      }
+    },
+  );
+
+  // ---------------------------------------------------------------------------
+  // 8. container_commit
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Commit a container's current state to a new image.
+   */
+  server.tool(
+    'container_commit',
+    "Commit a container's current state to a new image",
+    {
+      container: z.string().describe('Container ID or name'),
+      image: z.string().describe('New image name (e.g. myapp:v2)'),
+      message: z.string().optional().describe('Optional commit message'),
+    },
+    async ({ container, image, message }) => {
+      try {
+        if (!isValidOciName(image)) {
+          return buildErrorResponse(`Invalid image name: "${image}"`, {
+            hint: 'Image names must follow OCI naming conventions, e.g. "myapp:v2".',
+          });
+        }
+        const args = ['commit'];
+        if (message) {
+          args.push('--message', message);
+        }
+        args.push(container, image);
+
+        const stdout = await runContainerCommandStrict(args);
+
+        return buildSuccessResponse({
+          container,
+          image,
+          output: stdout.trim(),
+          message: `Committed container "${container}" to image "${image}" successfully`,
+        });
+      } catch (error: unknown) {
+        const errMsg = error instanceof Error ? error.message : String(error);
+        return buildErrorResponse(`Failed to commit container "${container}"`, { details: errMsg });
       }
     },
   );

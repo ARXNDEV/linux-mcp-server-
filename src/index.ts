@@ -3,7 +3,7 @@
 /**
  * container-mcp — MCP server for Apple container CLI.
  *
- * Provides 22 tools for managing Linux containers on macOS via AI agents.
+ * Provides 24 tools for managing Linux containers on macOS via AI agents.
  * Supports Claude Desktop, Claude Code, Cursor, and any MCP-compatible client.
  *
  * @module container-mcp
@@ -20,6 +20,10 @@ import { registerVolumeTools } from './tools/volumes.js';
 import { registerNetworkTools } from './tools/networks.js';
 import { registerSystemTools } from './tools/system.js';
 import { registerAiTools } from './tools/ai.js';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const { version } = require('../package.json') as { version: string };
 
 /**
  * Create and configure the MCP server with all tools registered.
@@ -29,7 +33,7 @@ import { registerAiTools } from './tools/ai.js';
 function createServer(): McpServer {
   const server = new McpServer({
     name: 'container-mcp',
-    version: '0.1.0',
+    version,
   });
 
   // Register all tool categories
@@ -41,7 +45,7 @@ function createServer(): McpServer {
   registerSystemTools(server);
   registerAiTools(server);
 
-  logger.info('All 22 tools registered successfully');
+  logger.info('All 24 tools registered successfully');
 
   return server;
 }
@@ -50,7 +54,7 @@ function createServer(): McpServer {
  * Main entry point — starts the MCP server with stdio transport.
  */
 async function main(): Promise<void> {
-  logger.info('Starting container-mcp server', { version: '0.1.0' });
+  logger.info('Starting container-mcp server', { version });
 
   // Check if the container CLI is available
   try {

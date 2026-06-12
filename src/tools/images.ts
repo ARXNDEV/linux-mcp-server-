@@ -11,6 +11,8 @@
  * @module tools/images
  */
 
+import { existsSync } from 'fs';
+import { resolve } from 'path';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
@@ -19,6 +21,7 @@ import {
   buildErrorResponse,
 } from '../utils/cli.js';
 import { isValidOciName, safeJsonParse } from '../utils/parser.js';
+import type { ToolResponse } from '../types.js';
 
 /* ------------------------------------------------------------------ */
 /*  Zod schemas (declared once for reuse & readability)               */
@@ -61,7 +64,7 @@ const BuildImageSchema = {
 /** Schema for {@link removeImage}. */
 const RemoveImageSchema = {
   references: z
-    .array(z.string())
+    .array(z.string().min(1))
     .min(1)
     .describe('One or more image references (name, id, or name:tag) to remove'),
   force: z
@@ -91,9 +94,9 @@ const InspectImageSchema = {
  * @param params.format   - `"json"` (default) or `"table"`
  * @returns MCP tool response containing the image list
  */
-async function listImages(params: { format: string }): Promise<ReturnType<typeof buildSuccessResponse>> {
+async function listImages(params: { format: string }): Promise<ToolResponse> {
   try {
-    const args: string[] = ['images'];
+    const args: string[] = ['image', 'ls'];
 
     if (params.format === 'json') {
       args.push('--format', 'json');
@@ -124,7 +127,7 @@ async function listImages(params: { format: string }): Promise<ReturnType<typeof
  * @param params.reference   - Image reference, e.g. `"ubuntu:latest"`
  * @returns MCP tool response with pull output or an error
  */
-async function pullImage(params: { reference: string }): Promise<ReturnType<typeof buildSuccessResponse>> {
+async function pullImage(params: { reference: string }): Promise<ToolResponse> {
   try {
     if (!isValidOciName(params.reference)) {
       return buildErrorResponse('Invalid image reference', {
@@ -141,6 +144,7 @@ async function pullImage(params: { reference: string }): Promise<ReturnType<type
     return buildSuccessResponse({
       message: `Successfully pulled image: ${params.reference}`,
       output: stdout,
+      note: 'Large images may take up to 2 minutes to pull. If this timed out, try again or check your network connection.',
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -172,8 +176,25 @@ async function buildImage(params: {
   dockerfile?: string;
   buildArgs?: Record<string, string>;
   platform?: string;
-}): Promise<ReturnType<typeof buildSuccessResponse>> {
+}): Promise<ToolResponse> {
   try {
+    const resolvedContext = resolve(params.context);
+    if (!existsSync(resolvedContext)) {
+      return buildErrorResponse(`Build context path does not exist: "${params.context}"`);
+    }
+
+    const allowedRoot = process.env['CONTAINER_MCP_CONTEXT_ROOT'] ?? process.env['HOME'] ?? '/';
+    if (!resolvedContext.startsWith(allowedRoot + '/') && resolvedContext !== allowedRoot) {
+      return buildErrorResponse(
+        `Build context path is outside the allowed root ("${allowedRoot}"). Set CONTAINER_MCP_CONTEXT_ROOT to override.`
+      );
+    }
+
+    if (!isValidOciName(params.tag)) {
+      return buildErrorResponse(`Invalid image tag: "${params.tag}"`, {
+        hint: 'Tags must follow OCI naming conventions, e.g. "myapp:1.0".',
+      });
+    }
     const args: string[] = ['build', '-t', params.tag];
 
     /* Optional Dockerfile path ---------------------------------------- */
@@ -184,6 +205,9 @@ async function buildImage(params: {
     /* Optional build arguments ---------------------------------------- */
     if (params.buildArgs) {
       for (const [key, value] of Object.entries(params.buildArgs)) {
+        if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(key)) {
+          return buildErrorResponse(`Invalid build arg key: "${key}". Keys must match [a-zA-Z_][a-zA-Z0-9_]*.`);
+        }
         args.push('--build-arg', `${key}=${value}`);
       }
     }
@@ -224,9 +248,16 @@ async function buildImage(params: {
 async function removeImage(params: {
   references: string[];
   force: boolean;
-}): Promise<ReturnType<typeof buildSuccessResponse>> {
+}): Promise<ToolResponse> {
   try {
-    const args: string[] = ['rmi'];
+    for (const ref of params.references) {
+      if (!isValidOciName(ref)) {
+        return buildErrorResponse(`Invalid image reference: "${ref}"`, {
+          hint: 'Image references must start with a lowercase alphanumeric character.',
+        });
+      }
+    }
+    const args: string[] = ['image', 'rm'];
 
     if (params.force) {
       args.push('--force');
@@ -261,7 +292,7 @@ async function removeImage(params: {
  * @param params.reference   - Image reference to inspect
  * @returns MCP tool response with parsed image metadata or an error
  */
-async function inspectImage(params: { reference: string }): Promise<ReturnType<typeof buildSuccessResponse>> {
+async function inspectImage(params: { reference: string }): Promise<ToolResponse> {
   try {
     const stdout = await runContainerCommandStrict(
       ['image', 'inspect', params.reference],

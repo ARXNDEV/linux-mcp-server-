@@ -137,3 +137,8 @@ export interface ToolError {
   stderr?: string;
   hint?: string;
 }
+
+/** Union return type for all MCP tool handler functions. */
+export type ToolResponse =
+  | { content: Array<{ type: 'text'; text: string }> }
+  | { content: Array<{ type: 'text'; text: string }>; isError: true };

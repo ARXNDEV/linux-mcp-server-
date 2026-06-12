@@ -60,64 +60,15 @@ export function parseTableOutput(input: string): Array<Record<string, string>> {
  */
 function extractColumnPositions(headerLine: string): Array<{ name: string; start: number }> {
   const columns: Array<{ name: string; start: number }> = [];
-  const regex = /\S+/g;
-  let match: RegExpExecArray | null;
-
+  // Split on 2+ consecutive spaces to find column boundaries
+  const regex = /\S.*?(?=\s{2,}|$)/g;
+  let match;
   while ((match = regex.exec(headerLine)) !== null) {
-    columns.push({
-      name: match[0],
-      start: match.index,
-    });
+    columns.push({ name: match[0].trim(), start: match.index });
   }
-
   return columns;
 }
 
-/**
- * Format bytes into a human-readable string (e.g., "1.2 GB").
- *
- * @param bytes - Number of bytes
- * @param decimals - Number of decimal places (default: 1)
- * @returns Formatted string like "256 MB" or "1.2 GB"
- */
-export function formatBytes(bytes: number, decimals = 1): string {
-  if (bytes === 0) return '0 B';
-
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  const value = bytes / Math.pow(k, i);
-
-  return `${value.toFixed(decimals)} ${sizes[i] ?? 'B'}`;
-}
-
-/**
- * Format a timestamp or duration into a human-readable relative time string.
- *
- * @param timestamp - ISO 8601 timestamp string or Date object
- * @returns Human-readable relative time (e.g., "2 hours ago", "5 minutes ago")
- */
-export function formatRelativeTime(timestamp: string | Date): string {
-  const date = typeof timestamp === 'string' ? new Date(timestamp) : timestamp;
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-
-  if (isNaN(diffMs)) return timestamp.toString();
-
-  const seconds = Math.floor(diffMs / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
-  const weeks = Math.floor(days / 7);
-  const months = Math.floor(days / 30);
-
-  if (seconds < 60) return `${seconds} seconds ago`;
-  if (minutes < 60) return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;
-  if (hours < 24) return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
-  if (days < 7) return `${days} day${days !== 1 ? 's' : ''} ago`;
-  if (weeks < 4) return `${weeks} week${weeks !== 1 ? 's' : ''} ago`;
-  return `${months} month${months !== 1 ? 's' : ''} ago`;
-}
 
 /**
  * Validate a container or image name against OCI naming conventions.
@@ -128,7 +79,7 @@ export function formatRelativeTime(timestamp: string | Date): string {
  */
 export function isValidOciName(name: string): boolean {
   if (!name || name.length === 0 || name.length > 255) return false;
-  // OCI names: lowercase alphanumeric, hyphens, underscores, dots, slashes, colons for tags
+  // OCI names: alphanumeric, hyphens, underscores, dots, slashes, colons for tags
   return /^[a-zA-Z0-9][a-zA-Z0-9._\-/:@]*$/.test(name);
 }
 
@@ -139,7 +90,7 @@ export function isValidOciName(name: string): boolean {
  * @returns true if the mapping is valid
  */
 export function isValidPortMapping(mapping: string): boolean {
-  return /^\d+:\d+(\/(?:tcp|udp))?$/.test(mapping);
+  return /^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:)?\d+:\d+(\/(?:tcp|udp))?$/.test(mapping);
 }
 
 /**
@@ -153,13 +104,53 @@ export function isValidEnvVar(envVar: string): boolean {
 }
 
 /**
- * Truncate a string to a maximum length, adding ellipsis if truncated.
+ * Format bytes into a human-readable string.
+ *
+ * @param bytes - The number of bytes
+ * @param decimals - Number of decimal places
+ * @returns Formatted string
+ */
+export function formatBytes(bytes: number, decimals = 1): string {
+  if (!+bytes) return '0 B';
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${(bytes / Math.pow(k, i)).toFixed(dm)} ${sizes[i]}`;
+}
+
+/**
+ * Format a date into a relative time string.
+ *
+ * @param dateInput - The date to format
+ * @returns Relative time string
+ */
+export function formatRelativeTime(dateInput: Date | string): string {
+  const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+  if (isNaN(date.getTime())) return String(dateInput);
+
+  const diffMs = date.getTime() - new Date().getTime();
+  const diffMins = Math.round(diffMs / 60000);
+  const diffHours = Math.round(diffMs / 3600000);
+  const diffDays = Math.round(diffMs / 86400000);
+
+  const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+
+  if (Math.abs(diffDays) > 0) return rtf.format(diffDays, 'day');
+  if (Math.abs(diffHours) > 0) return rtf.format(diffHours, 'hour');
+  if (Math.abs(diffMins) > 0) return rtf.format(diffMins, 'minute');
+  return 'just now';
+}
+
+/**
+ * Truncate a string to a maximum length.
  *
  * @param str - The string to truncate
- * @param maxLength - Maximum length (default: 200)
- * @returns The original or truncated string
+ * @param maxLength - Maximum allowed length
+ * @returns Truncated string
  */
-export function truncate(str: string, maxLength = 200): string {
+export function truncate(str: string, maxLength: number): string {
   if (str.length <= maxLength) return str;
-  return str.substring(0, maxLength - 3) + '...';
+  return str.slice(0, maxLength - 3) + '...';
 }
+

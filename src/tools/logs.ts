@@ -105,9 +105,11 @@ export function registerLogTools(server: McpServer): void {
       name: z.string().describe('Container name or ID'),
       tail: z
         .number()
+        .int()
+        .min(1)
         .optional()
         .default(100)
-        .describe('Number of lines from end'),
+        .describe('Number of lines from end (must be a positive integer)'),
       since: z
         .string()
         .optional()
@@ -125,11 +127,16 @@ export function registerLogTools(server: McpServer): void {
         // Build argument list
         const args: string[] = ['logs'];
 
-        if (tail !== undefined && tail > 0) {
+        if (tail !== undefined) {
           args.push('--tail', String(tail));
         }
 
         if (since) {
+          if (!/^\d{4}-\d{2}-\d{2}(T[\d:]+Z?)?$/.test(since)) {
+            return buildErrorResponse(
+              `Invalid "since" value: "${since}". Use ISO 8601 format, e.g. 2024-01-01T00:00:00`
+            );
+          }
           args.push('--since', since);
         }
 
@@ -155,15 +162,25 @@ export function registerLogTools(server: McpServer): void {
         const logOutput = result.stdout || '(no log output)';
         const lineCount = logOutput.split('\n').filter((l) => l.length > 0).length;
 
+        if (follow) {
+          return buildSuccessResponse({
+            container: name,
+            lineCount,
+            tail,
+            since: since ?? null,
+            follow,
+            followIgnored: true,
+            followNote: 'follow mode is not supported in MCP context — returning static snapshot.',
+            logs: logOutput,
+          });
+        }
+
         return buildSuccessResponse({
           container: name,
           lineCount,
           tail,
           since: since ?? null,
           follow,
-          note: follow
-            ? 'follow=true returns a snapshot — MCP does not support streaming.'
-            : undefined,
           logs: logOutput,
         });
       } catch (error) {

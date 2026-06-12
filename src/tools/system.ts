@@ -65,27 +65,14 @@ export function registerSystemTools(server: McpServer): void {
     'Remove unused containers, images, networks, and build cache. Requires explicit confirmation to prevent accidental data loss.',
     {
       confirm: z
-        .boolean()
-        .describe(
-          'Must be set to true to execute the prune — acts as a safety check to prevent accidental resource deletion.',
-        ),
+        .literal(true)
+        .describe('Must be true to execute the prune — acts as a safety check.'),
     },
-    async ({ confirm }) => {
+    async () => {
       try {
-        // ── Safety gate ─────────────────────────────────────────────
-        if (confirm !== true) {
-          return buildErrorResponse(
-            'Prune aborted: confirmation required. Set "confirm" to true to proceed.',
-            {
-              hint: 'This is a destructive operation that removes unused containers, images, networks, and build cache. ' +
-                'Pass { "confirm": true } to execute.',
-            },
-          );
-        }
-
         const stdout = await runContainerCommandStrict(
-          ['system', 'prune', '--force'],
-          { timeout: 60_000 }, // prune can take a while
+          ['system', 'prune'],
+          { timeout: 180_000 }, // prune can take several minutes on large systems
         );
 
         // Try to extract reclaimed space info from the output

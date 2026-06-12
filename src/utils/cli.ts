@@ -15,6 +15,30 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 const CONTAINER_CLI = process.env['CONTAINER_CLI_PATH'] || 'container';
 
 /**
+ * Redact sensitive values from CLI args for safe logging.
+ * Redacts the value after -e / --env flags (may contain secrets).
+ */
+const SENSITIVE_FLAGS = new Set(['-e', '--env', '--password', '--token', '--secret', '--registry-password']);
+
+function redactArgs(args: string[]): string[] {
+  return args.map((arg, i) => {
+    const prev = args[i - 1];
+    // Redact value that follows a sensitive flag
+    if (prev && SENSITIVE_FLAGS.has(prev)) {
+      const eqIdx = arg.indexOf('=');
+      return eqIdx !== -1 ? arg.substring(0, eqIdx + 1) + '***' : '***';
+    }
+    // Redact --flag=value single-arg form
+    for (const flag of SENSITIVE_FLAGS) {
+      if (arg.startsWith(flag + '=')) {
+        return arg.substring(0, flag.length + 1) + '***';
+      }
+    }
+    return arg;
+  });
+}
+
+/**
  * Check if the `container` CLI is installed and accessible.
  * @returns true if the CLI is available
  * @throws Error with a helpful message if the CLI is not found
@@ -62,6 +86,7 @@ export async function runContainerCommand(
 ): Promise<CliResult> {
   const timeout = options.timeout ?? DEFAULT_TIMEOUT_MS;
   const commandStr = `${CONTAINER_CLI} ${args.join(' ')}`;
+  const safeCommandStr = `${CONTAINER_CLI} ${redactArgs(args).join(' ')}`;
 
   logger.debug('Executing command', { command: commandStr, timeout });
 
@@ -107,16 +132,16 @@ export async function runContainerCommand(
 
     if (err.timedOut) {
       throw new Error(
-        `Command timed out after ${timeout}ms: ${commandStr}\n` +
+        `Command timed out after ${timeout}ms: ${safeCommandStr}\n` +
           'Try increasing the timeout or check if the container daemon is responsive.',
       );
     }
 
     if (err.isCanceled) {
-      throw new Error(`Command was canceled: ${commandStr}`);
+      throw new Error(`Command was canceled: ${safeCommandStr}`);
     }
 
-    throw new Error(`Command failed: ${commandStr}\n${err.message}`);
+    throw new Error(`Command failed: ${safeCommandStr}\n${err.message}`);
   }
 }
 
@@ -138,7 +163,7 @@ export async function runContainerCommandStrict(
   const result = await runContainerCommand(args, options);
 
   if (result.exitCode !== 0) {
-    const commandStr = `${CONTAINER_CLI} ${args.join(' ')}`;
+    const commandStr = `${CONTAINER_CLI} ${redactArgs(args).join(' ')}`;
     const error = mapCliError(result, commandStr);
     throw new Error(formatToolError(error));
   }

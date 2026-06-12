@@ -88,9 +88,19 @@ export function registerVolumeTools(server: McpServer): void {
     },
     async ({ name, size }) => {
       try {
+        if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(name)) {
+          return buildErrorResponse(
+            `Invalid volume name: "${name}". Names must start with alphanumeric and contain only [a-zA-Z0-9_.-].`
+          );
+        }
         const args: string[] = ['volume', 'create'];
 
         if (size) {
+          if (!/^\d+(\.\d+)?[KMGTkmgt][Bb]?$/.test(size)) {
+            return buildErrorResponse(
+              `Invalid size format: "${size}". Use a number followed by a unit, e.g. "10G", "500M", "2TB".`
+            );
+          }
           args.push('--opt', `size=${size}`);
         }
 
@@ -123,7 +133,7 @@ export function registerVolumeTools(server: McpServer): void {
     'Remove one or more container volumes by name. Use force to remove volumes that are still in use.',
     {
       names: z
-        .array(z.string())
+        .array(z.string().min(1))
         .min(1)
         .describe('List of volume names to remove. At least one name is required.'),
       force: z
@@ -134,6 +144,11 @@ export function registerVolumeTools(server: McpServer): void {
     },
     async ({ names, force }) => {
       try {
+        for (const name of names) {
+          if (!name.trim() || /[\s;|&`$]/.test(name)) {
+            return buildErrorResponse(`Invalid name: "${name}". Names must not be empty or contain shell metacharacters.`);
+          }
+        }
         const args: string[] = ['volume', 'rm'];
 
         if (force) {
