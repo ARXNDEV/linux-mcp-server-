@@ -22,24 +22,29 @@ Built on [Apple's container CLI](https://github.com/apple/container) for native 
 npm install -g container-mcp
 ```
 
-Or run directly with npx:
+You can run the server directly via `npx` using the published npm package:
 
 ```bash
-npx container-mcp
+npx -y @arxndev/container-mcp
 ```
+
+Or, if you prefer to build from source:
 
 ## Configuration
 
-### Claude Desktop
+### For Claude Desktop
 
-Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+Add this to your `claude_desktop_config.json` file:
 
 ```json
 {
   "mcpServers": {
-    "container": {
+    "container-mcp": {
       "command": "npx",
-      "args": ["-y", "container-mcp"]
+      "args": [
+        "-y",
+        "@arxndev/container-mcp"
+      ]
     }
   }
 }

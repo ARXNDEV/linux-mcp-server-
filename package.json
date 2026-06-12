@@ -1,5 +1,5 @@
 {
-  "name": "container-mcp",
+  "name": "@arxndev/container-mcp",
   "version": "0.1.0",
   "description": "MCP server for Apple container — manage Linux containers on macOS via AI",
   "type": "module",
