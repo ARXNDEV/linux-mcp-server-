@@ -41,8 +41,7 @@ function createServer(): McpServer {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (server as any).tool = (...args: any[]) => {
     toolCount++;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return originalTool(...(args as any));
+    return (originalTool as any)(...args);
   };
 
   // Register all tool categories
