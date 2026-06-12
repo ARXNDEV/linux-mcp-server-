@@ -7,17 +7,25 @@ import { runContainerCommandStrict, runContainerCommand } from '../src/utils/cli
 import { registerContainerTools } from '../src/tools/containers.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
-vi.mock('../src/utils/cli.js', () => ({
-  runContainerCommandStrict: vi.fn(),
-  runContainerCommand: vi.fn(),
-  buildSuccessResponse: vi.fn((data) => ({
-    content: [{ type: 'text', text: typeof data === 'string' ? data : JSON.stringify(data, null, 2) }],
-  })),
-  buildErrorResponse: vi.fn((msg, details) => ({
-    content: [{ type: 'text', text: JSON.stringify({ error: msg, ...details }, null, 2) }],
-    isError: true,
-  })),
-}));
+vi.mock('../src/utils/cli.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/utils/cli.js')>();
+  return {
+    ...actual,
+    runContainerCommandStrict: vi.fn(),
+    runContainerCommand: vi.fn(),
+    buildSuccessResponse: vi.fn((data) => ({
+      content: [{ type: 'text', text: typeof data === 'string' ? data : JSON.stringify(data, null, 2) }],
+    })),
+    buildErrorResponse: vi.fn((msg, details) => ({
+      content: [{ type: 'text', text: JSON.stringify({ error: msg, ...details }, null, 2) }],
+      isError: true,
+    })),
+    isWithinSafeRoot: (resolvedPath: string, safeRoot: string) => {
+      const normalRoot = safeRoot.endsWith('/') ? safeRoot : safeRoot + '/';
+      return resolvedPath === safeRoot || resolvedPath.startsWith(normalRoot);
+    },
+  };
+});
 
 const mockedRunStrict = vi.mocked(runContainerCommandStrict);
 const mockedRun = vi.mocked(runContainerCommand);
@@ -171,6 +179,7 @@ describe('Container Tools', () => {
   describe('copy_to_container', () => {
     it('should reject non-existent host path', async () => {
       const handler = getToolHandler('copy_to_container');
+      process.env.CONTAINER_MCP_VOLUME_ROOT = '/';
       const res = await handler({ hostPath: '/does/not/exist/12345', containerName: 'web', containerPath: '/' }, {});
       expect(res.isError).toBe(true);
       expect(res.content[0].text).toContain('Host path not found');
@@ -180,6 +189,18 @@ describe('Container Tools', () => {
       const handler = getToolHandler('copy_to_container');
       process.env.CONTAINER_MCP_VOLUME_ROOT = '/safe';
       const res = await handler({ hostPath: '/', containerName: 'web', containerPath: '/' }, {});
+      expect(res.isError).toBe(true);
+      expect(res.content[0].text).toContain('outside the allowed root');
+    });
+
+    it('should reject path with prefix collision (isWithinSafeRoot check)', async () => {
+      const handler = getToolHandler('copy_to_container');
+      process.env.CONTAINER_MCP_VOLUME_ROOT = '/Users/aru';
+      const res = await handler({
+        hostPath: '/Users/arumight/secret',
+        containerName: 'web',
+        containerPath: '/'
+      }, {});
       expect(res.isError).toBe(true);
       expect(res.content[0].text).toContain('outside the allowed root');
     });
@@ -217,6 +238,17 @@ describe('Container Tools', () => {
       mockedRun.mockResolvedValue({ stdout: '', stderr: 'err', exitCode: 1 });
       const res = await handler({ name: 'web', timeout: 300 }, {});
       expect(res.isError).toBe(true);
+    });
+
+    it('should show "unknown" in message when exit code is unparseable', async () => {
+      const handler = getToolHandler('wait_container');
+      mockedRun.mockResolvedValue({ stdout: 'not-a-number\n', stderr: '', exitCode: 0 });
+      const res = await handler({ name: 'web', timeout: 300 }, {});
+      expect(res.isError).toBeFalsy();
+      const parsed = JSON.parse(res.content[0].text);
+      expect(parsed.exitCode).toBeNull();
+      expect(parsed.message).toContain('unknown');
+      expect(parsed.message).not.toContain('NaN');
     });
   });
 

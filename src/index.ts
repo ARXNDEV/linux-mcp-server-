@@ -3,7 +3,7 @@
 /**
  * container-mcp — MCP server for Apple container CLI.
  *
- * Provides 24 tools for managing Linux containers on macOS via AI agents.
+ * Provides tools for managing Linux containers on macOS via AI agents.
  * Supports Claude Desktop, Claude Code, Cursor, and any MCP-compatible client.
  *
  * @module container-mcp

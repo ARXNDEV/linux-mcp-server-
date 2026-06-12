@@ -112,9 +112,9 @@ export function registerLogTools(server: McpServer): void {
         .number()
         .int()
         .min(1)
-        .optional()
+        .max(10000)
         .default(100)
-        .describe('Number of lines from end (must be a positive integer)'),
+        .describe('Number of lines from end (1–10000, default: 100)'),
       since: z
         .string()
         .optional()

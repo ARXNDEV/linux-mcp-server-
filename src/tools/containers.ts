@@ -1,19 +1,22 @@
 /**
  * @fileoverview Container lifecycle management tools for the Apple Container MCP server.
  *
- * Registers 11 MCP tools that wrap the `container` CLI to provide full
+ * Registers 14 MCP tools that wrap the `container` CLI to provide full
  * container lifecycle management:
- *   1. list_containers   — enumerate containers (running or all)
- *   2. run_container     — create and start a container from an OCI image
- *   3. stop_container    — gracefully stop one or more running containers
- *   4. start_container   — start one or more previously stopped containers
- *   5. delete_container  — remove one or more containers
- *   6. inspect_container — retrieve detailed metadata for a single container
- *   7. exec_in_container — execute a command inside a running container
- *   8. container_commit   — commit a container's current state to a new image
- *   9. copy_to_container  — copy file from host to container
- *  10. copy_from_container— copy file from container to host
- *  11. wait_container     — wait for container to stop and get exit code
+ *   1.  list_containers    — enumerate containers (running or all)
+ *   2.  run_container      — create and start a container from an OCI image
+ *   3.  stop_container     — gracefully stop one or more running containers
+ *   4.  start_container    — start one or more previously stopped containers
+ *   5.  delete_container   — remove one or more containers
+ *   6.  inspect_container  — retrieve detailed metadata for a single container
+ *   7.  exec_in_container  — execute a command inside a running container
+ *   8.  container_commit   — commit a container's current state to a new image
+ *   9.  copy_to_container  — copy file from host to container
+ *  10.  copy_from_container — copy file from container to host
+ *  11.  wait_container     — wait for container to stop and get exit code
+ *  12.  rename_container   — rename an existing container
+ *  13.  pause_container    — pause all processes within one or more containers
+ *  14.  unpause_container  — unpause all processes in one or more containers
  *
  * @module tools/containers
  */
@@ -28,6 +31,7 @@ import {
   runContainerCommand,
   buildSuccessResponse,
   buildErrorResponse,
+  isWithinSafeRoot,
 } from '../utils/cli.js';
 
 import {
@@ -248,7 +252,7 @@ export function registerContainerTools(server: McpServer): void {
             }
             // Stronger check: ensure resolved host path doesn't escape a safe root
             const safeRoot = process.env['CONTAINER_MCP_VOLUME_ROOT'] ?? process.env['HOME'] ?? process.cwd();
-            if (!resolvedHost.startsWith(safeRoot)) {
+            if (!isWithinSafeRoot(resolvedHost, safeRoot)) {
               return buildErrorResponse(
                 `Volume host path "${resolvedHost}" is outside the allowed root ("${safeRoot}").`
               );
@@ -653,14 +657,14 @@ export function registerContainerTools(server: McpServer): void {
     async ({ hostPath, containerName, containerPath }) => {
       try {
         const resolvedHost = resolve(hostPath);
-        if (!existsSync(resolvedHost)) {
-          return buildErrorResponse(`Host path not found: ${resolvedHost}`);
-        }
         const safeRoot = process.env['CONTAINER_MCP_VOLUME_ROOT'] ?? process.env['HOME'] ?? process.cwd();
-        if (!resolvedHost.startsWith(safeRoot)) {
+        if (!isWithinSafeRoot(resolvedHost, safeRoot)) {
           return buildErrorResponse(
             `Host path "${resolvedHost}" is outside the allowed root ("${safeRoot}").`
           );
+        }
+        if (!existsSync(resolvedHost)) {
+          return buildErrorResponse(`Host path not found: ${resolvedHost}`);
         }
         const args = ['cp', resolvedHost, `${containerName}:${containerPath}`];
         const stdout = await runContainerCommandStrict(args);
@@ -687,7 +691,7 @@ export function registerContainerTools(server: McpServer): void {
       try {
         const resolvedHost = resolve(hostPath);
         const safeRoot = process.env['CONTAINER_MCP_VOLUME_ROOT'] ?? process.env['HOME'] ?? process.cwd();
-        if (!resolvedHost.startsWith(safeRoot)) {
+        if (!isWithinSafeRoot(resolvedHost, safeRoot)) {
           return buildErrorResponse(
             `Host path "${resolvedHost}" is outside the allowed root ("${safeRoot}").`
           );
@@ -733,7 +737,7 @@ export function registerContainerTools(server: McpServer): void {
         return buildSuccessResponse({
           container: name,
           exitCode: isNaN(containerExitCode) ? null : containerExitCode,
-          message: `Container "${name}" stopped with exit code ${containerExitCode}`,
+          message: `Container "${name}" stopped with exit code ${isNaN(containerExitCode) ? 'unknown' : containerExitCode}`,
         });
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);

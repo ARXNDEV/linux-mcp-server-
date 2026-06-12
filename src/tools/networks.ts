@@ -30,11 +30,7 @@ import { z } from 'zod';
  */
 export function registerNetworkTools(server: McpServer): void {
   /**
-   * list_networks — List all container networks.
-   *
-   * Runs `container network ls` and returns the output in the requested format.
-   * When format is 'json', the raw CLI output is parsed into structured data
-   * containing network names, IDs, drivers, scopes, and subnet information.
+   * create_network — Create a new container network.
    */
   server.tool(
     'create_network',
@@ -79,6 +75,13 @@ export function registerNetworkTools(server: McpServer): void {
     },
     async ({ networks }) => {
       try {
+        for (const network of networks) {
+          if (!network.trim() || /[\s;|&`$]/.test(network)) {
+            return buildErrorResponse(
+              `Invalid network name: "${network}". Names must not be empty or contain shell metacharacters.`
+            );
+          }
+        }
         const stdout = await runContainerCommandStrict(['network', 'rm', ...networks]);
         return buildSuccessResponse({
           message: `Removed ${networks.length} network(s) successfully`,

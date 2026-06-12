@@ -74,6 +74,13 @@ describe('Network Tools', () => {
       await handler({ networks: ['mynet1', 'mynet2'] }, {});
       expect(mockedRunStrict).toHaveBeenCalledWith(['network', 'rm', 'mynet1', 'mynet2']);
     });
+
+    it('should reject name with metachar', async () => {
+      const handler = getNetworkHandler('delete_network');
+      const res = await handler({ networks: ['net; rm -rf /'] }, {});
+      expect(res.isError).toBe(true);
+      expect(res.content[0].text).toContain('shell metacharacters');
+    });
   });
 
   describe('list_networks', () => {

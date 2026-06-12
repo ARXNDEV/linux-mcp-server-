@@ -23,6 +23,7 @@ import {
   runContainerCommandStrict,
   buildSuccessResponse,
   buildErrorResponse,
+  isWithinSafeRoot,
 } from '../utils/cli.js';
 import { isValidOciName, safeJsonParse } from '../utils/parser.js';
 import type { ToolResponse } from '../types.js';
@@ -188,7 +189,7 @@ async function buildImage(params: {
     }
 
     const allowedRoot = process.env['CONTAINER_MCP_CONTEXT_ROOT'] ?? process.env['HOME'] ?? '/';
-    if (!resolvedContext.startsWith(allowedRoot + '/') && resolvedContext !== allowedRoot) {
+    if (!isWithinSafeRoot(resolvedContext, allowedRoot)) {
       return buildErrorResponse(
         `Build context path is outside the allowed root ("${allowedRoot}"). Set CONTAINER_MCP_CONTEXT_ROOT to override.`
       );

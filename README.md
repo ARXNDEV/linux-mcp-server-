@@ -72,12 +72,14 @@ Add to `.cursor/mcp.json` in your project:
 |----------|---------|-------------|
 | `CONTAINER_CLI_PATH` | `container` | Path to the container CLI binary |
 | `CONTAINER_MCP_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
+| `CONTAINER_MCP_VOLUME_ROOT` | `$HOME` | Restricts host paths for volume mounts and file copies. Paths outside this root are rejected. |
+| `CONTAINER_MCP_CONTEXT_ROOT` | `$HOME` | Restricts the build context path for `build_image`. Paths outside this root are rejected. |
 
 ---
 
 ## Tool Reference
 
-### 🐳 Container Lifecycle (8 tools)
+### 🐳 Container Lifecycle (14 tools)
 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
@@ -89,8 +91,14 @@ Add to `.cursor/mcp.json` in your project:
 | `inspect_container` | Get detailed container info | `name` |
 | `exec_in_container` | Execute command in container | `name`, `command`, `interactive` |
 | `container_commit` | Commit container to new image | `container`, `image`, `message` |
+| `copy_to_container` | Copy file/dir from host to container | `hostPath`, `containerName`, `containerPath` |
+| `copy_from_container` | Copy file/dir from container to host | `containerName`, `containerPath`, `hostPath` |
+| `wait_container` | Wait for container stop, get exit code | `name`, `timeout` |
+| `rename_container` | Rename an existing container | `container`, `newName` |
+| `pause_container` | Pause processes in containers | `names` |
+| `unpause_container` | Unpause processes in containers | `names` |
 
-### 📦 Image Management (5 tools)
+### 📦 Image Management (7 tools)
 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
@@ -99,6 +107,8 @@ Add to `.cursor/mcp.json` in your project:
 | `build_image` | Build image from Dockerfile | `context`, `tag`, `dockerfile`, `buildArgs`, `platform` |
 | `remove_image` | Remove images | `references`, `force` |
 | `inspect_image` | Get detailed image info | `reference` |
+| `tag_image` | Tag an existing local image | `source`, `target` |
+| `push_image` | Push image to registry | `image` |
 
 ### 📋 Logs & Monitoring (3 tools)
 
@@ -108,13 +118,20 @@ Add to `.cursor/mcp.json` in your project:
 | `get_container_stats` | Get CPU/memory/network stats | `name` |
 | `get_container_processes` | List processes in container | `name` |
 
-### 💾 Volumes & Networks (4 tools)
+### 💾 Volumes (3 tools)
 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
 | `list_volumes` | List all volumes | `format` |
 | `create_volume` | Create a new volume | `name`, `size` |
 | `delete_volume` | Remove volumes | `names`, `force` |
+
+### 🌐 Networks (3 tools)
+
+| Tool | Description | Key Parameters |
+|------|-------------|----------------|
+| `create_network` | Create a container network | `name`, `driver`, `options` |
+| `delete_network` | Remove one or more networks | `networks` |
 | `list_networks` | List all networks | `format` |
 
 ### ⚙️ System (2 tools)
@@ -128,7 +145,7 @@ Add to `.cursor/mcp.json` in your project:
 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
-| `diagnose_container` | Analyze logs & state to diagnose issues | `name`, `question` |
+| `diagnose_container` | Analyze logs & inspect data for issues | `name` |
 | `explain_container` | Human-readable container summary | `name` |
 
 ---
