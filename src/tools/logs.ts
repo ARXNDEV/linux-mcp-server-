@@ -129,6 +129,9 @@ export function registerLogTools(server: McpServer): void {
     },
     async ({ name, tail, since, follow }) => {
       try {
+        if (!name.trim() || /[\s;|&`$]/.test(name)) {
+          return buildErrorResponse(`Invalid container name: "${name}". Names must not be empty or contain shell metacharacters.`);
+        }
         // Build argument list
         const args: string[] = ['logs'];
 
@@ -217,6 +220,9 @@ export function registerLogTools(server: McpServer): void {
     },
     async ({ name }) => {
       try {
+        if (!name.trim() || /[\s;|&`$]/.test(name)) {
+          return buildErrorResponse(`Invalid container name: "${name}". Names must not be empty or contain shell metacharacters.`);
+        }
         const args: string[] = ['stats', '--no-stream', name];
 
         const result = await runContainerCommand(args, { timeout: 15_000 });
@@ -294,6 +300,11 @@ export function registerLogTools(server: McpServer): void {
     },
     async ({ name }) => {
       try {
+        if (!name.trim() || /[\s;|&`$]/.test(name)) {
+          return buildErrorResponse(`Invalid container name: "${name}". Names must not be empty or contain shell metacharacters.`);
+        }
+
+
         const args: string[] = ['top', name];
 
         const result = await runContainerCommand(args, { timeout: 15_000 });

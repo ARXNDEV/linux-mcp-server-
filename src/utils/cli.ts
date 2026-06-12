@@ -281,3 +281,14 @@ export function buildSuccessResponse(
     content: [{ type: 'text' as const, text }],
   };
 }
+
+
+/**
+ * Check that `resolvedPath` is inside `safeRoot`.
+ * Uses a trailing-slash check to prevent prefix collisions
+ * (e.g. root=/Users/aru must not match /Users/arumight).
+ */
+export function isWithinSafeRoot(resolvedPath: string, safeRoot: string): boolean {
+  const normalRoot = safeRoot.endsWith('/') ? safeRoot : safeRoot + '/';
+  return resolvedPath === safeRoot.replace(/\/+$/, '') || resolvedPath.startsWith(normalRoot);
+}

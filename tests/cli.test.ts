@@ -18,6 +18,7 @@ import {
   formatToolError,
   buildErrorResponse,
   buildSuccessResponse,
+  isWithinSafeRoot,
 } from '../src/utils/cli.js';
 
 const mockedExeca = vi.mocked(execa);
@@ -246,6 +247,30 @@ describe('CLI Executor', () => {
       const response = buildSuccessResponse({ key: 'value' });
       const parsed = JSON.parse(response.content[0]!.text);
       expect(parsed.key).toBe('value');
+    });
+  });
+
+  describe('isWithinSafeRoot', () => {
+    it('exact match (/Users/aru == /Users/aru) -> true', () => {
+      expect(isWithinSafeRoot('/Users/aru', '/Users/aru')).toBe(true);
+    });
+
+    it('child path (/Users/aru/projects) -> true', () => {
+      expect(isWithinSafeRoot('/Users/aru/projects', '/Users/aru')).toBe(true);
+    });
+
+    it('prefix collision (/Users/arumight) -> false', () => {
+      expect(isWithinSafeRoot('/Users/arumight', '/Users/aru')).toBe(false);
+    });
+
+    it('sibling path (/Users/bob) -> false', () => {
+      expect(isWithinSafeRoot('/Users/bob', '/Users/aru')).toBe(false);
+    });
+
+    it('root with trailing slash in safeRoot -> still works', () => {
+      expect(isWithinSafeRoot('/Users/aru/projects', '/Users/aru/')).toBe(true);
+      expect(isWithinSafeRoot('/Users/aru', '/Users/aru/')).toBe(true);
+      expect(isWithinSafeRoot('/Users/arumight', '/Users/aru/')).toBe(false);
     });
   });
 });

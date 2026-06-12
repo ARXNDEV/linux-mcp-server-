@@ -433,6 +433,9 @@ export function registerDiagnosticsTools(server: McpServer): void {
     },
     async ({ name, question }) => {
       try {
+        if (!name.trim() || /[\s;|&`$]/.test(name)) {
+          return buildErrorResponse(`Invalid container name: "${name}". Names must not be empty or contain shell metacharacters.`);
+        }
         // ── Step 1: Fetch logs (last 100 lines) ───────────────────
         const logsResult = await runContainerCommand(
           ['logs', '--tail', '100', name],
@@ -541,6 +544,9 @@ export function registerDiagnosticsTools(server: McpServer): void {
     },
     async ({ name }) => {
       try {
+        if (!name.trim() || /[\s;|&`$]/.test(name)) {
+          return buildErrorResponse(`Invalid container name: "${name}". Names must not be empty or contain shell metacharacters.`);
+        }
         // ── Inspect (required) ────────────────────────────────────
         let inspectRaw: string;
         try {

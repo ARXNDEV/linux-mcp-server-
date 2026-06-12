@@ -245,11 +245,7 @@ export function registerContainerTools(server: McpServer): void {
             }
             const [hostPath] = mount.split(':');
             const resolvedHost = resolve(hostPath!);
-            if (resolvedHost !== hostPath!.replace(/\/+$/, '') && hostPath!.includes('..')) {
-              return buildErrorResponse(
-                `Invalid volume mount: "${mount}". Path traversal (..) is not allowed.`
-              );
-            }
+
             // Stronger check: ensure resolved host path doesn't escape a safe root
             const safeRoot = process.env['CONTAINER_MCP_VOLUME_ROOT'] ?? process.env['HOME'] ?? process.cwd();
             if (!isWithinSafeRoot(resolvedHost, safeRoot)) {
@@ -495,6 +491,9 @@ export function registerContainerTools(server: McpServer): void {
     },
     async ({ name }) => {
       try {
+        if (!name.trim() || /[\s;|&`$]/.test(name)) {
+          return buildErrorResponse(`Invalid container name: "${name}". Names must not be empty or contain shell metacharacters.`);
+        }
         const args: string[] = ['inspect', name, '--format', 'json'];
 
         let stdout: string;
@@ -550,6 +549,9 @@ export function registerContainerTools(server: McpServer): void {
     },
     async ({ name, command, interactive }) => {
       try {
+        if (!name.trim() || /[\s;|&`$]/.test(name)) {
+          return buildErrorResponse(`Invalid container name: "${name}". Names must not be empty or contain shell metacharacters.`);
+        }
         const args: string[] = ['exec'];
 
         if (interactive) {
@@ -620,6 +622,9 @@ export function registerContainerTools(server: McpServer): void {
     },
     async ({ container, image, message }) => {
       try {
+        if (!container.trim() || /[\s;|&`$]/.test(container)) {
+          return buildErrorResponse(`Invalid container name: "${container}". Names must not be empty or contain shell metacharacters.`);
+        }
         if (!isValidOciName(image)) {
           return buildErrorResponse(`Invalid image name: "${image}"`, {
             hint: 'Image names must follow OCI naming conventions, e.g. "myapp:v2".',
@@ -724,6 +729,9 @@ export function registerContainerTools(server: McpServer): void {
     },
     async ({ name, timeout }) => {
       try {
+        if (!name.trim() || /[\s;|&`$]/.test(name)) {
+          return buildErrorResponse(`Invalid container name: "${name}". Names must not be empty or contain shell metacharacters.`);
+        }
         const result = await runContainerCommand(['wait', name], {
           timeout: timeout * 1000,
         });
