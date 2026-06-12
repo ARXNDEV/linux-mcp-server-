@@ -314,6 +314,27 @@ async function inspectImage(params: { reference: string }): Promise<ToolResponse
   }
 }
 
+async function tagImage(params: { source: string; target: string }): Promise<ToolResponse> {
+  try {
+    if (!isValidOciName(params.source)) {
+      return buildErrorResponse(`Invalid source image reference: "${params.source}"`);
+    }
+    if (!isValidOciName(params.target)) {
+      return buildErrorResponse(`Invalid target image reference: "${params.target}"`);
+    }
+    const stdout = await runContainerCommandStrict(['image', 'tag', params.source, params.target]);
+    return buildSuccessResponse({
+      source: params.source,
+      target: params.target,
+      output: stdout.trim(),
+      message: `Tagged "${params.source}" as "${params.target}" successfully`,
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return buildErrorResponse('Failed to tag image', { details: message });
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /*  Registration                                                      */
 /* ------------------------------------------------------------------ */
@@ -375,5 +396,16 @@ export function registerImageTools(server: McpServer): void {
     'Get detailed metadata for an image including layers, environment variables, entrypoint, and platform information.',
     InspectImageSchema,
     async (params) => inspectImage(params),
+  );
+
+  /* ── tag_image ───────────────────────────────────────────────── */
+  server.tool(
+    'tag_image',
+    'Create a new tag for an existing local image (e.g. myapp:latest → myapp:v1.2.3)',
+    {
+      source: z.string().describe('Existing image reference to tag (name:tag or id)'),
+      target: z.string().describe('New tag to assign, e.g. "myapp:v1.2.3"'),
+    },
+    (params) => tagImage(params),
   );
 }

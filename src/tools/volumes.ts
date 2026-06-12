@@ -146,7 +146,9 @@ export function registerVolumeTools(server: McpServer): void {
       try {
         for (const name of names) {
           if (!name.trim() || /[\s;|&`$]/.test(name)) {
-            return buildErrorResponse(`Invalid name: "${name}". Names must not be empty or contain shell metacharacters.`);
+            return buildErrorResponse(
+              `Invalid volume name: "${name}". Names must not be empty or contain shell metacharacters.`
+            );
           }
         }
         const args: string[] = ['volume', 'rm'];

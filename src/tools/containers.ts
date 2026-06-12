@@ -1,7 +1,7 @@
 /**
  * @fileoverview Container lifecycle management tools for the Apple Container MCP server.
  *
- * Registers 8 MCP tools that wrap the `container` CLI to provide full
+ * Registers 11 MCP tools that wrap the `container` CLI to provide full
  * container lifecycle management:
  *   1. list_containers   — enumerate containers (running or all)
  *   2. run_container     — create and start a container from an OCI image
@@ -11,6 +11,9 @@
  *   6. inspect_container — retrieve detailed metadata for a single container
  *   7. exec_in_container — execute a command inside a running container
  *   8. container_commit   — commit a container's current state to a new image
+ *   9. copy_to_container  — copy file from host to container
+ *  10. copy_from_container— copy file from container to host
+ *  11. wait_container     — wait for container to stop and get exit code
  *
  * @module tools/containers
  */
@@ -243,7 +246,7 @@ export function registerContainerTools(server: McpServer): void {
               );
             }
             // Stronger check: ensure resolved host path doesn't escape a safe root
-            const safeRoot = process.env['CONTAINER_MCP_VOLUME_ROOT'] ?? '/';
+            const safeRoot = process.env['CONTAINER_MCP_VOLUME_ROOT'] ?? process.env['HOME'] ?? process.cwd();
             if (!resolvedHost.startsWith(safeRoot)) {
               return buildErrorResponse(
                 `Volume host path "${resolvedHost}" is outside the allowed root ("${safeRoot}").`
@@ -634,6 +637,105 @@ export function registerContainerTools(server: McpServer): void {
       } catch (error: unknown) {
         const errMsg = error instanceof Error ? error.message : String(error);
         return buildErrorResponse(`Failed to commit container "${container}"`, { details: errMsg });
+      }
+    },
+  );
+
+  server.tool(
+    'copy_to_container',
+    'Copy a file or directory from the host into a running or stopped container',
+    {
+      hostPath: z.string().describe('Absolute path on the host to copy from'),
+      containerName: z.string().describe('Target container name or ID'),
+      containerPath: z.string().describe('Destination path inside the container'),
+    },
+    async ({ hostPath, containerName, containerPath }) => {
+      try {
+        const { resolve: resolvePath } = await import('path');
+        const resolvedHost = resolvePath(hostPath);
+        const safeRoot = process.env['CONTAINER_MCP_VOLUME_ROOT'] ?? process.env['HOME'] ?? process.cwd();
+        if (!resolvedHost.startsWith(safeRoot)) {
+          return buildErrorResponse(
+            `Host path "${resolvedHost}" is outside the allowed root ("${safeRoot}").`
+          );
+        }
+        const args = ['cp', resolvedHost, `${containerName}:${containerPath}`];
+        const stdout = await runContainerCommandStrict(args);
+        return buildSuccessResponse({
+          message: `Copied "${resolvedHost}" → "${containerName}:${containerPath}" successfully`,
+          output: stdout.trim(),
+        });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        return buildErrorResponse('Failed to copy file to container', { details: message });
+      }
+    },
+  );
+
+  server.tool(
+    'copy_from_container',
+    'Copy a file or directory from a container to the host filesystem',
+    {
+      containerName: z.string().describe('Source container name or ID'),
+      containerPath: z.string().describe('Path inside the container to copy'),
+      hostPath: z.string().describe('Destination path on the host'),
+    },
+    async ({ containerName, containerPath, hostPath }) => {
+      try {
+        const { resolve: resolvePath } = await import('path');
+        const resolvedHost = resolvePath(hostPath);
+        const safeRoot = process.env['CONTAINER_MCP_VOLUME_ROOT'] ?? process.env['HOME'] ?? process.cwd();
+        if (!resolvedHost.startsWith(safeRoot)) {
+          return buildErrorResponse(
+            `Host path "${resolvedHost}" is outside the allowed root ("${safeRoot}").`
+          );
+        }
+        const args = ['cp', `${containerName}:${containerPath}`, resolvedHost];
+        const stdout = await runContainerCommandStrict(args);
+        return buildSuccessResponse({
+          message: `Copied "${containerName}:${containerPath}" → "${resolvedHost}" successfully`,
+          output: stdout.trim(),
+        });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        return buildErrorResponse('Failed to copy file from container', { details: message });
+      }
+    },
+  );
+
+  server.tool(
+    'wait_container',
+    'Wait for a container to stop and return its exit code. Useful for one-shot jobs in CI/CD workflows.',
+    {
+      name: z.string().describe('Container name or ID to wait for'),
+      timeout: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .default(300)
+        .describe('Maximum seconds to wait before giving up (default: 300)'),
+    },
+    async ({ name, timeout }) => {
+      try {
+        const result = await runContainerCommand(['wait', name], {
+          timeout: timeout * 1000,
+        });
+        if (result.exitCode !== 0) {
+          return buildErrorResponse(`wait_container failed for "${name}"`, {
+            stderr: result.stderr,
+            exitCode: result.exitCode,
+          });
+        }
+        const containerExitCode = parseInt(result.stdout.trim(), 10);
+        return buildSuccessResponse({
+          container: name,
+          exitCode: isNaN(containerExitCode) ? null : containerExitCode,
+          message: `Container "${name}" stopped with exit code ${containerExitCode}`,
+        });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        return buildErrorResponse(`Failed to wait for container "${name}"`, { details: message });
       }
     },
   );

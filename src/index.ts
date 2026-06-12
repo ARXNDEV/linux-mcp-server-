@@ -19,7 +19,7 @@ import { registerLogTools } from './tools/logs.js';
 import { registerVolumeTools } from './tools/volumes.js';
 import { registerNetworkTools } from './tools/networks.js';
 import { registerSystemTools } from './tools/system.js';
-import { registerAiTools } from './tools/ai.js';
+import { registerDiagnosticsTools } from './tools/diagnostics.js';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
@@ -43,9 +43,9 @@ function createServer(): McpServer {
   registerVolumeTools(server);
   registerNetworkTools(server);
   registerSystemTools(server);
-  registerAiTools(server);
+  registerDiagnosticsTools(server);
 
-  logger.info('All 24 tools registered successfully');
+  logger.info(`All 27 tools registered successfully`);
 
   return server;
 }

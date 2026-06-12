@@ -13,7 +13,7 @@
  *   describes what a container is, what it's doing, and how it's
  *   configured.
  *
- * @module tools/ai
+ * @module tools/diagnostics
  */
 
 import { z } from 'zod';
@@ -414,7 +414,7 @@ function extractStatus(inspect: Record<string, unknown>): string {
  *
  * @param server - The McpServer instance to register tools on
  */
-export function registerAiTools(server: McpServer): void {
+export function registerDiagnosticsTools(server: McpServer): void {
   // ──────────────────────────────────────────────────────────────────
   // diagnose_container — AI-powered container diagnosis
   // ──────────────────────────────────────────────────────────────────

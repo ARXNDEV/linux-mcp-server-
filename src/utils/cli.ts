@@ -85,10 +85,9 @@ export async function runContainerCommand(
   } = {},
 ): Promise<CliResult> {
   const timeout = options.timeout ?? DEFAULT_TIMEOUT_MS;
-  const commandStr = `${CONTAINER_CLI} ${args.join(' ')}`;
   const safeCommandStr = `${CONTAINER_CLI} ${redactArgs(args).join(' ')}`;
 
-  logger.debug('Executing command', { command: commandStr, timeout });
+  logger.debug('Executing command', { command: safeCommandStr, timeout });
 
   try {
     const result = await execa(CONTAINER_CLI, args, {
@@ -106,19 +105,19 @@ export async function runContainerCommand(
 
     if (result.exitCode !== 0) {
       logger.warn('Command exited with non-zero code', {
-        command: commandStr,
+        command: safeCommandStr,
         exitCode: result.exitCode,
         stderr: result.stderr,
       });
     } else {
-      logger.debug('Command succeeded', { command: commandStr });
+      logger.debug('Command succeeded', { command: safeCommandStr });
     }
 
     return cliResult;
   } catch (error) {
     const err = error as ExecaError;
     logger.error('Command execution failed', {
-      command: commandStr,
+      command: safeCommandStr,
       error: err.message,
     });
 
@@ -163,8 +162,8 @@ export async function runContainerCommandStrict(
   const result = await runContainerCommand(args, options);
 
   if (result.exitCode !== 0) {
-    const commandStr = `${CONTAINER_CLI} ${redactArgs(args).join(' ')}`;
-    const error = mapCliError(result, commandStr);
+    const safeCommandStr = `${CONTAINER_CLI} ${redactArgs(args).join(' ')}`;
+    const error = mapCliError(result, safeCommandStr);
     throw new Error(formatToolError(error));
   }
 

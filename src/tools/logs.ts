@@ -16,7 +16,7 @@ import {
   buildSuccessResponse,
   buildErrorResponse,
 } from '../utils/cli.js';
-import { safeJsonParse, parseTableOutput } from '../utils/parser.js';
+import { safeJsonParse, parseTableOutput, parseRelativeDuration, formatBytes } from '../utils/parser.js';
 import type { ContainerStats, ProcessInfo } from '../types.js';
 
 /**
@@ -47,16 +47,21 @@ function parseStatsRow(row: Record<string, string>): ContainerStats {
   const blockInput = blockParts[0]?.trim() ?? 'N/A';
   const blockOutput = blockParts[1]?.trim() ?? 'N/A';
 
+  const tryFormatBytes = (val: string) => {
+    const bytes = parseInt(val, 10);
+    return isNaN(bytes) ? val : formatBytes(bytes);
+  };
+
   return {
     name: row['name'] ?? row['container id'] ?? 'unknown',
     cpuPercent: row['cpu %'] ?? 'N/A',
-    memoryUsage,
-    memoryLimit,
+    memoryUsage: tryFormatBytes(memoryUsage),
+    memoryLimit: tryFormatBytes(memoryLimit),
     memoryPercent: row['mem %'] ?? 'N/A',
-    networkInput,
-    networkOutput,
-    blockInput,
-    blockOutput,
+    networkInput: tryFormatBytes(networkInput),
+    networkOutput: tryFormatBytes(networkOutput),
+    blockInput: tryFormatBytes(blockInput),
+    blockOutput: tryFormatBytes(blockOutput),
     pids: row['pids'] ?? 'N/A',
   };
 }
@@ -132,12 +137,13 @@ export function registerLogTools(server: McpServer): void {
         }
 
         if (since) {
-          if (!/^\d{4}-\d{2}-\d{2}(T[\d:]+Z?)?$/.test(since)) {
+          const parsedSince = parseRelativeDuration(since) ?? since;
+          if (!/^\d{4}-\d{2}-\d{2}(T[\d:.]+Z?)?$/.test(parsedSince)) {
             return buildErrorResponse(
-              `Invalid "since" value: "${since}". Use ISO 8601 format, e.g. 2024-01-01T00:00:00`
+              `Invalid "since" value: "${since}". Use ISO 8601 format (e.g. 2024-01-01T00:00:00) or a relative duration (e.g. "5m", "1h").`
             );
           }
-          args.push('--since', since);
+          args.push('--since', parsedSince);
         }
 
         // `follow` is intentionally *not* passed to the CLI because MCP cannot
